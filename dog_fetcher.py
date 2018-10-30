@@ -15,13 +15,15 @@ import urllib.request
 
 DOGS_PAGE = 'https://www.animalhumanesociety.org/adoption?f%5B0%5D=animal_type%3ADog'
 DOMAIN = 'https://www.animalhumanesociety.org'
-PATH_TO_LINKS = '//*[@class, "animal--image-wrapper"]/a'
-PATH_TO_NAME = '//*[@class, "animal-title"]/h1'
-PATH_TO_BREED = '//*[@class, "animal--breed"]'
-PATH_TO_SEX = '//*[@class, "animal--sex"]'
-PATH_TO_AGE = '//*[@class, "animal--age"]'
-PATH_TO_WEIGHT = '//*[@class, "animal--weight"]'
-PATH_TO_LOCATION = '//*[@class="animal--location"]/*[@class="field__item"]'
+PATH_TO_LINKS = '//div[@class="animal--image-wrapper"]//a'
+PATH_TO_NAME = '//div[@class="animal-title"]//h1'
+PATH_TO_BREED = '//div[@class="animal--breed"]'
+PATH_TO_SEX = '//div[@class="animal--sex"]'
+PATH_TO_AGE = '//div[@class="animal--age"]'
+PATH_TO_WEIGHT = '//div[@class="animal--weight"]'
+PATH_TO_LOCATION = '//div[@class="animal--location"]//div[@class="field__item"]'
+PATH_TO_ID = '//div[@class="animal--details-bottom"]//div[@class="animal-item"]'
+PATH_TO_IMG = '//div[@id="animal--main-image"]//img'
 
 DELAY = 3600
 SMTP_PORT = 587
@@ -114,42 +116,47 @@ A dog is a dictionary of:
 """
 def parse_dogs(dogs_html):
 	all_dogs = {}
-	document = lxml.html.document_fromstring(dogs_html)
-	dog_divs = document.xpath('//div[@class="adopt_animal"]')
+	main_doc = lxml.html.document_fromstring(dogs_html)
+	dog_links = main_doc.xpath(PATH_TO_LINKS)
 	
 	logging.info('Parsing out the dogs...')
 	count = 0
-	for div in dog_divs:
-		link_tag = div.find('a')
-		quick_view_link = link_tag.attrib['rel']
-		link = link_tag.attrib['href']
-		quick_view_response = urllib.request.urlopen(DOMAIN + quick_view_link)
-		if quick_view_response.status == 200:
-			html = quick_view_response.read().decode('UTF-8')
-			quick_view_doc = lxml.html.document_fromstring(html)
+	for link in dog_links:
+		full_link = DOMAIN + link.attrib['href']
+		dog_page = urllib.request.urlopen(full_link)
+		if dog_page.status == 200:
+			html = dog_page.read().decode('UTF-8')
+			dog_doc = lxml.html.document_fromstring(html)
 			new_dog = {}
 
 			# Get info from page
-			new_dog['name'] = quick_view_doc.xpath('//*[contains(@class, "a_name")]')[0].text_content()
-			description = quick_view_doc.xpath('//*[contains(@class, "a_desq")]')
-			# If the details page is incomplete, just grab what should be there and fill the rest
-			if len(description) < 6:
-				new_dog['breed'] = 'check on site'
-				new_dog['gender'] = 'check on site'
-				new_dog['age'] = 'check on site'
-				new_dog['location'] = 'check on site'
-				new_dog['link'] = link
-				new_dog['img'] = DOMAIN + quick_view_doc.xpath('//img')[0].attrib['src']
-				dog_id_e = quick_view_doc.xpath('//*[contains(@class, "a_desq") and contains(text(), "ID")]')[0]
-				dog_id = dog_id_e.text_content().split(':')[-1]
-			else:
-				new_dog['breed'] = description[0].text_content()
-				new_dog['gender'] = description[1].text_content()
-				new_dog['age'] = description[2].text_content()
-				new_dog['location'] = description[5].text_content().split(':')[-1]
-				new_dog['img'] = DOMAIN + quick_view_doc.xpath('//img')[0].attrib['src']
-				new_dog['link'] = link
-				dog_id = int(description[4].text_content().split()[-1])
+			new_dog['name'] = dog_doc.xpath(PATH_TO_NAME)[0].text_content()
+			new_dog['breed'] = dog_doc.xpath(PATH_TO_BREED)[0].text_content()
+			new_dog['age'] = dog_doc.xpath(PATH_TO_AGE)[0].text_content()
+			new_dog['location'] = dog_doc.xpath(PATH_TO_LOCATION)[0].text_content()
+			new_dog['link'] = full_link
+			new_dog['img'] = dog_doc.xpath(PATH_TO_IMG)[0].attrib['src']
+			dog_id = dog_doc.xpath(PATH_TO_ID)[0].text_content()
+
+			# description = quick_view_doc.xpath('//*[contains(@class, "a_desq")]')
+			# # If the details page is incomplete, just grab what should be there and fill the rest
+			# if len(description) < 6:
+			# 	new_dog['breed'] = 'check on site'
+			# 	new_dog['gender'] = 'check on site'
+			# 	new_dog['age'] = 'check on site'
+			# 	new_dog['location'] = 'check on site'
+			# 	new_dog['link'] = link
+			# 	new_dog['img'] = DOMAIN + quick_view_doc.xpath('//img')[0].attrib['src']
+			# 	dog_id_e = quick_view_doc.xpath('//*[contains(@class, "a_desq") and contains(text(), "ID")]')[0]
+			# 	dog_id = dog_id_e.text_content().split(':')[-1]
+			# else:
+			# 	new_dog['breed'] = description[0].text_content()
+			# 	new_dog['gender'] = description[1].text_content()
+			# 	new_dog['age'] = description[2].text_content()
+			# 	new_dog['location'] = description[5].text_content().split(':')[-1]
+			# 	new_dog['img'] = DOMAIN + quick_view_doc.xpath('//img')[0].attrib['src']
+			# 	new_dog['link'] = link
+			# 	dog_id = int(description[4].text_content().split()[-1])
 				
 			all_dogs[dog_id] = new_dog
 			count += 1
@@ -184,29 +191,30 @@ def watch_for_dogs(email_username, email_password, recipients):
 		# Wait a bit before we check again
 		time.sleep(DELAY)
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--sender_email_addr', help='Email address to send mail to', required=True)
-parser.add_argument('--recipients', help='List of addresses to send email to', nargs='+', required=True)
-parser.add_argument('--smtp_server', required=False)
-parser.add_argument('--smtp_port', type=int, required=False)
-parser.add_argument('--delay', type=int, required=False)
-args = parser.parse_args()
+if __name__ == '__main__':
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--sender_email_addr', help='Email address to send mail to', required=True)
+	parser.add_argument('--recipients', help='List of addresses to send email to', nargs='+', required=True)
+	parser.add_argument('--smtp_server', required=False)
+	parser.add_argument('--smtp_port', type=int, required=False)
+	parser.add_argument('--delay', type=int, required=False)
+	args = parser.parse_args()
 
-# Process optional args
-if args.smtp_server:
-	SMTP_SERVER = args.smtp_server
-if args.smtp_port:
-	SMTP_PORT = args.smtp_port
-if args.delay:
-	DELAY = args.delay
+	# Process optional args
+	if args.smtp_server:
+		SMTP_SERVER = args.smtp_server
+	if args.smtp_port:
+		SMTP_PORT = args.smtp_port
+	if args.delay:
+		DELAY = args.delay
 
-# Get password from environment variable.
-# After this, parent process should remove password
-if EMAIL_PASS in os.environ:
-	email_pass = os.environ[EMAIL_PASS]
-else:
-	logging.error('No password in environment, so email is not possible.')
-	logging.error('Exiting...')
-	exit(1)
+	# Get password from environment variable.
+	# After this, parent process should remove password
+	if EMAIL_PASS in os.environ:
+		email_pass = os.environ[EMAIL_PASS]
+	else:
+		logging.error('No password in environment, so email is not possible.')
+		logging.error('Exiting...')
+		exit(1)
 
-watch_for_dogs(args.sender_email_addr, email_pass, args.recipients)
+	watch_for_dogs(args.sender_email_addr, email_pass, args.recipients)
