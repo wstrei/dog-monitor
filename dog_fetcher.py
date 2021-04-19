@@ -12,7 +12,7 @@ import time
 import traceback
 import urllib.request
 
-
+test='test'
 DOGS_PAGE = 'https://www.animalhumanesociety.org/adoption?f%5B0%5D=animal_type%3ADog'
 DOMAIN = 'https://www.animalhumanesociety.org'
 PATH_TO_LINKS = '//div[@class="animal--image-wrapper"]//a'
